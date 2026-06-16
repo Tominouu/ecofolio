@@ -8,36 +8,52 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
   <script src="/static/js/htmx.min.js"></script>
 </head>
-<body class="dashboard">
+<body class="page-dashboard">
   <header class="topbar">
     <div class="topbar-left">
       <span class="logo">✦ Ecofolio</span>
     </div>
     <div class="topbar-right">
-      <a href="/settings" class="btn btn-ghost btn-sm">Paramètres</a>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('dialog-new').showModal()">+ Nouveau</button>
     </div>
   </header>
 
   <main class="dashboard-main">
     <div class="dashboard-header">
       <h1 class="dashboard-title">Mes projets</h1>
-      <button class="btn btn-primary"
-              hx-post="/api/projects"
-              hx-vals='{"title": "Nouveau projet"}'
-              hx-target="#project-grid"
-              hx-swap="beforeend"
-              hx-on::after-request="if(event.detail.successful) window.location.reload()">
-        + Nouveau projet
-      </button>
     </div>
 
     <div id="project-grid" class="project-grid"
          hx-get="/api/projects"
          hx-trigger="load"
-         hx-swap="innerHTML">
+         hx-swap="innerHTML"
+         hx-headers='{"HX-Request": "true"}'>
       <div class="loading">Chargement...</div>
     </div>
   </main>
+
+  <dialog id="dialog-new" class="dialog">
+    <form hx-post="/api/projects"
+          hx-trigger="submit"
+          hx-headers='{"HX-Request": "true"}'
+          hx-target="body"
+          hx-swap="beforeend"
+          onsubmit="event.preventDefault();"
+          id="new-project-form">
+      <h2 class="dialog-title">Nouveau projet</h2>
+      <div class="field">
+        <label for="new-title">Titre du projet</label>
+        <input type="text" id="new-title" name="title" placeholder="Ex: Mon projet" required autofocus>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('dialog-new').close()">Annuler</button>
+        <button type="submit" class="btn btn-primary"
+                onclick="const f=document.getElementById('new-project-form');const d=new FormData(f);fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json','HX-Request':'true'},body:JSON.stringify({title:d.get('title')})}).then(r=>{if(r.ok){document.getElementById('dialog-new').close();window.location.reload()}})">
+          Créer
+        </button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/static/js/editor.js"></script>
 </body>

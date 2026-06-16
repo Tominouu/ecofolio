@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { devCommand } from './commands/dev.js';
 import { buildCommand } from './commands/build.js';
 import { initCommand } from './commands/init.js';
+import { deployCommand } from './commands/deploy.js';
 
 const program = new Command();
 
@@ -27,5 +28,12 @@ program
   .description('Initialize a new portfolio')
   .argument('[directory]', 'Directory to create the portfolio in')
   .action(initCommand);
+
+program
+  .command('deploy')
+  .description('Build and deploy to GitHub Pages')
+  .option('-m, --message <message>', 'Commit message', 'feat: deploy portfolio')
+  .option('-b, --branch <branch>', 'Git branch to deploy to', 'gh-pages')
+  .action(deployCommand);
 
 program.parse();

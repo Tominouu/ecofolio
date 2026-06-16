@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ContentManager } from '../../content/manager.js';
 import { createProject } from '../../core/types/project.js';
 import { slugify } from '../../core/utils/slug.js';
+import { isHtmx, renderProjectCards } from '../htmx.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -11,11 +12,17 @@ declare module 'fastify' {
 }
 
 export function registerProjectRoutes(app: FastifyInstance) {
-  app.get('/api/projects', async (_req) => {
+  app.get('/api/projects', async (req, reply) => {
     const slugs = await app.contentManager.listProjects();
     const projects = await Promise.all(
       slugs.map((slug) => app.contentManager.readProject(slug)),
     );
+
+    if (isHtmx(req)) {
+      reply.header('Content-Type', 'text/html');
+      return renderProjectCards(projects);
+    }
+
     return projects.map((p) => ({
       slug: p.slug,
       title: p.title,
@@ -40,6 +47,12 @@ export function registerProjectRoutes(app: FastifyInstance) {
     }
     const project = createProject(slug, title);
     await app.contentManager.writeProject(project);
+
+    if (isHtmx(req)) {
+      reply.header('HX-Redirect', `/editor/${slug}`);
+      return '';
+    }
+
     return reply.status(201).send(project);
   });
 
@@ -71,18 +84,12 @@ export function registerProjectRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: true, message: 'Project not found' });
     }
     await app.contentManager.deleteProject(slug);
-    return reply.status(204).send();
-  });
 
-  app.post<{ Params: { slug: string } }>('/api/projects/:slug/duplicate', async (req, reply) => {
-    const { slug } = req.params;
-    if (!(await app.contentManager.projectExists(slug))) {
-      return reply.status(404).send({ error: true, message: 'Project not found' });
+    if (isHtmx(req)) {
+      reply.header('HX-Redirect', '/');
+      return '';
     }
-    const project = await app.contentManager.readProject(slug);
-    const newSlug = slugify(`${project.title} copie`);
-    const copy = { ...project, slug: newSlug, title: `${project.title} (copie)`, status: 'draft' as const };
-    await app.contentManager.writeProject(copy);
-    return reply.status(201).send(copy);
+
+    return reply.status(204).send();
   });
 }

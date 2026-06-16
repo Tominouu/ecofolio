@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyCors from '@fastify/cors';
+import fastifyMultipart from '@fastify/multipart';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ContentManager } from '../content/manager.js';
@@ -15,6 +16,9 @@ import { registerThemeRoutes } from './routes/theme.js';
 import { registerAssetRoutes } from './routes/assets.js';
 import { registerGitRoutes } from './routes/git.js';
 import { registerBlocksDefinitionsRoutes } from './routes/blocks-definitions.js';
+import { registerBlockEditorRoutes } from './routes/block-editor.js';
+import { registerMetricsRoutes } from './routes/metrics.js';
+import { registerDeployRoutes } from './routes/deploy.js';
 import { errorHandler } from './middleware/error-handler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -42,10 +46,19 @@ export async function createServer(options: ServerOptions) {
 
   await app.register(fastifyCors, { origin: true });
   await app.register(fastifyWebsocket);
+  await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
   await app.register(fastifyStatic, {
     root: resolve(__dirname, '..', '..', 'public'),
     prefix: '/static/',
+  });
+
+  app.register(async (scope) => {
+    await scope.register(fastifyStatic, {
+      root: resolve(projectRoot, 'assets'),
+      prefix: '/assets/',
+      decorateReply: false,
+    });
   });
 
   app.decorate('contentManager', contentManager);
@@ -54,12 +67,15 @@ export async function createServer(options: ServerOptions) {
   registerProjectRoutes(app);
   registerBlockRoutes(app);
   registerBlocksDefinitionsRoutes(app);
+  registerBlockEditorRoutes(app);
   registerPreviewRoutes(app);
   registerEditorRoutes(app);
   registerSettingsRoutes(app);
   registerThemeRoutes(app);
   registerAssetRoutes(app);
   registerGitRoutes(app);
+  registerMetricsRoutes(app);
+  registerDeployRoutes(app);
 
   return app;
 }

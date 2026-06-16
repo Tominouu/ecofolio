@@ -7,105 +7,392 @@
   <link rel="stylesheet" href="/static/css/editor.css">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
   <script src="/static/js/htmx.min.js"></script>
-  <style>
-    .split-view { display: flex; height: calc(100vh - 48px); }
-    .canvas { flex: 1; overflow-y: auto; padding: 2rem; background: var(--surface-secondary); }
-    .preview { flex: 1; border-left: 1px solid var(--border-primary); }
-    .preview iframe { width: 100%; height: 100%; border: none; background: #fff; }
-    @media (max-width: 768px) { .split-view { flex-direction: column; } .preview { border-left: none; border-top: 1px solid var(--border-primary); height: 50vh; } }
-  </style>
 </head>
-<body class="editor" data-project="">
+<body class="page-editor" data-project="">
   <header class="topbar">
     <div class="topbar-left">
       <a href="/" class="btn btn-ghost btn-sm">← Projets</a>
       <span class="topbar-title" id="project-title">Projet</span>
+      <span class="project-status-badge" id="project-status"></span>
+      <span class="theme-toggle-btn" onclick="toggleTheme()" title="Changer le thème visuel">🌓</span>
     </div>
     <div class="topbar-right">
-      <span class="metrics-badge" id="eco-badge">🌱</span>
-      <button class="btn btn-primary btn-sm" id="publish-btn" hx-post="/api/git/commit" hx-trigger="click">Publier</button>
+      <button class="btn btn-sm btn-ghost" id="project-settings-btn" onclick="showProjectSettings()">⚙</button>
+      <button class="btn btn-sm" id="status-toggle" onclick="toggleStatus()">Changer statut</button>
+      <button class="btn btn-primary btn-sm" onclick="publish()">Publier</button>
     </div>
   </header>
 
   <div class="split-view">
     <div class="canvas" id="canvas">
-      <div id="blocks-container"
-           hx-get="/api/projects/{slug}/blocks"
-           hx-trigger="load"
-           hx-swap="innerHTML">
+      <div class="canvas-header">
+        <span class="canvas-title">Blocs</span>
+        <button class="btn btn-ghost btn-sm" onclick="openPalette()">+ Ajouter bloc</button>
+      </div>
+      <div class="canvas-blocks" id="blocks-container">
         <div class="loading">Chargement...</div>
       </div>
-      <button class="add-block-btn" id="add-block-btn">+ Ajouter un bloc</button>
     </div>
+
+    <div class="inspector" id="inspector" style="display:none">
+      <div class="inspector-header">
+        <span class="inspector-title">Éditer le bloc</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeInspector()">✕</button>
+      </div>
+      <div class="inspector-body" id="inspector-body">
+        <div class="loading">Chargement...</div>
+      </div>
+      <div class="inspector-footer">
+        <button class="btn btn-primary btn-sm" id="inspector-save" onclick="saveBlock()">Enregistrer</button>
+      </div>
+    </div>
+
     <div class="preview">
-      <iframe id="preview-frame" src="/api/preview" title="Aperçu en direct"></iframe>
+      <div class="preview-toolbar">
+        <span class="preview-title">Aperçu en direct</span>
+        <div class="preview-controls">
+          <button class="btn btn-ghost btn-sm" onclick="setPreviewDevice('mobile')" title="Mobile">📱</button>
+          <button class="btn btn-ghost btn-sm" onclick="setPreviewDevice('desktop')" title="Desktop">💻</button>
+          <button class="btn btn-ghost btn-sm" onclick="refreshPreview()">↻</button>
+        </div>
+      </div>
+      <div class="preview-frame-wrap" id="preview-wrap">
+        <iframe id="preview-frame" src="/api/preview" title="Aperçu en direct"></iframe>
+      </div>
     </div>
   </div>
 
-  <div id="block-palette" class="block-palette" style="display:none;">
+  <div id="block-palette" class="palette-overlay" style="display:none">
     <div class="palette-backdrop" onclick="closePalette()"></div>
-    <div class="palette-content">
-      <h3>Ajouter un bloc</h3>
-      <div id="palette-blocks" hx-get="/api/blocks/definitions" hx-trigger="load" hx-swap="innerHTML"></div>
+    <div class="palette">
+      <div class="palette-header">
+        <h3>Ajouter un bloc</h3>
+        <button class="btn btn-ghost btn-sm" onclick="closePalette()">✕</button>
+      </div>
+      <div class="palette-body" id="palette-body"></div>
+    </div>
+  </div>
+
+  <footer class="editor-footer">
+    <div class="footer-left">
+      <span class="footer-brand">✦ Ecofolio</span>
+    </div>
+    <div class="footer-right">
+      <div hx-get="/api/metrics/badge" hx-trigger="load, every 30s" hx-swap="outerHTML">
+        <div class="metrics-badge-placeholder">Loading metrics…</div>
+      </div>
+    </div>
+  </footer>
+
+  <div id="project-settings-modal" class="palette-overlay" style="display:none">
+    <div class="palette-backdrop" onclick="closeProjectSettings()"></div>
+    <div class="palette" style="max-width:480px">
+      <div class="palette-header">
+        <h3>Paramètres du projet</h3>
+        <button class="btn btn-ghost btn-sm" onclick="closeProjectSettings()">✕</button>
+      </div>
+      <div class="palette-body" id="project-settings-body"></div>
     </div>
   </div>
 
   <script>
-    const projectSlug = document.body.dataset.project || new URLSearchParams(window.location.search).get('slug') || '';
+    let currentSlug = new URLSearchParams(window.location.search).get('slug')
+      || window.location.pathname.replace('/editor/', '').replace('/', '')
+      || '';
+    let editingBlockId = null;
+    let editingBlockData = {};
 
-    function setupEditor(slug) {
-      document.body.dataset.project = slug;
-      const blocksContainer = document.getElementById('blocks-container');
-      blocksContainer.setAttribute('hx-get', `/api/projects/${slug}/blocks`);
-      htmx.process(blocksContainer);
+    function loadProject() {
+      if (!currentSlug) return;
+      document.body.dataset.project = currentSlug;
 
-      document.getElementById('add-block-btn').onclick = () => openPalette(slug);
-
-      fetch(`/api/projects/${slug}`)
+      fetch('/api/projects/' + currentSlug)
         .then(r => r.json())
-        .then(p => document.getElementById('project-title').textContent = p.title);
+        .then(p => {
+          document.getElementById('project-title').textContent = p.title;
+          const badge = document.getElementById('project-status');
+          badge.textContent = p.status;
+          badge.className = 'project-status-badge ' + p.status;
+          loadBlocks();
+        })
+        .catch(() => {});
     }
 
-    function openPalette(slug) {
-      const palette = document.getElementById('block-palette');
-      palette.style.display = 'flex';
-      const blocks = document.getElementById('palette-blocks');
-      blocks.innerHTML = '';
-      fetch('/api/blocks/definitions')
-        .then(r => r.json())
-        .then(defs => {
-          blocks.innerHTML = defs.map(d => `
-            <button class="palette-item"
-                    hx-post="/api/projects/${slug}/blocks"
-                    hx-vals='{"type": "${d.id}"}'
-                    hx-target="#blocks-container"
-                    hx-swap="innerHTML"
-                    hx-on::after-request="closePalette(); refreshPreview();">
-              <span class="palette-icon">${d.icon}</span>
-              <span class="palette-name">${d.name}</span>
-            </button>
-          `).join('');
-          htmx.process(blocks);
+    function loadBlocks() {
+      const container = document.getElementById('blocks-container');
+      fetch('/api/projects/' + currentSlug + '/blocks', { headers: { 'HX-Request': 'true' } })
+        .then(r => r.text())
+        .then(html => {
+          container.innerHTML = html;
+          htmx.process(container);
+          document.querySelectorAll('.block').forEach(el => {
+            el.addEventListener('click', (e) => {
+              if (e.target.closest('.block-actions')) return;
+              const blockId = el.dataset.blockId;
+              openInspector(blockId);
+            });
+          });
+          refreshPreview();
+        })
+        .catch(() => {});
+    }
+
+    function openInspector(blockId) {
+      editingBlockId = blockId;
+      const inspector = document.getElementById('inspector');
+      inspector.style.display = 'flex';
+      document.getElementById('inspector-body').innerHTML = '<div class="loading">Chargement...</div>';
+
+      fetch(`/api/projects/${currentSlug}/blocks/${blockId}/edit`)
+        .then(r => r.text())
+        .then(html => {
+          document.getElementById('inspector-body').innerHTML = html;
+        });
+
+      document.querySelectorAll('.block').forEach(el => el.classList.remove('selected'));
+      document.querySelector(`[data-block-id="${blockId}"]`)?.classList.add('selected');
+    }
+
+    function closeInspector() {
+      document.getElementById('inspector').style.display = 'none';
+      editingBlockId = null;
+      document.querySelectorAll('.block').forEach(el => el.classList.remove('selected'));
+    }
+
+    function saveBlock() {
+      if (!editingBlockId) return;
+      const data = {};
+      document.querySelectorAll('#inspector-body [data-block-id]').forEach(el => {
+        const name = el.getAttribute('name') || el.id;
+        if (el.type === 'checkbox') {
+          data[name] = el.checked;
+        } else if (el.tagName === 'TEXTAREA' && (name === 'images' || name === 'items')) {
+          try { data[name] = JSON.parse(el.value); } catch { data[name] = el.value; }
+        } else {
+          data[name] = el.value;
+        }
+      });
+
+      fetch(`/api/projects/${currentSlug}/blocks/${editingBlockId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'HX-Request': 'true' },
+        body: JSON.stringify(data),
+      })
+        .then(r => r.text())
+        .then(() => {
+          closeInspector();
+          loadBlocks();
         });
     }
 
-    function closePalette() {
-      document.getElementById('block-palette').style.display = 'none';
+    function openPalette() {
+      const overlay = document.getElementById('block-palette');
+      overlay.style.display = 'flex';
+      const body = document.getElementById('palette-body');
+      fetch('/api/blocks/definitions?slug=' + currentSlug)
+        .then(r => r.json())
+        .then(data => {
+          body.innerHTML = data.html;
+          htmx.process(body);
+        });
     }
+
+    function closePalette() { document.getElementById('block-palette').style.display = 'none'; }
 
     function refreshPreview() {
-      const iframe = document.getElementById('preview-frame');
-      fetch('/api/preview/refresh', { method: 'GET' })
-        .then(() => iframe.src = '/api/preview?' + Date.now());
+      fetch('/api/preview/refresh', { method: 'GET', headers: { 'Cache-Control': 'no-cache' } })
+        .then(() => { document.getElementById('preview-frame').src = '/api/preview?' + Date.now(); })
+        .catch(() => {});
     }
 
+    function setPreviewDevice(device) {
+      const wrap = document.getElementById('preview-wrap');
+      if (device === 'mobile') {
+        wrap.style.maxWidth = '375px';
+        wrap.style.margin = '0 auto';
+      } else {
+        wrap.style.maxWidth = '';
+        wrap.style.margin = '';
+      }
+    }
+
+    function toggleStatus() {
+      if (!currentSlug) return;
+      fetch('/api/projects/' + currentSlug)
+        .then(r => r.json())
+        .then(p => {
+          const newStatus = p.status === 'published' ? 'draft' : 'published';
+          return fetch('/api/projects/' + currentSlug, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
+          });
+        })
+        .then(r => r.json())
+        .then(p => {
+          document.getElementById('project-status').textContent = p.status;
+          document.getElementById('project-status').className = 'project-status-badge ' + p.status;
+          refreshPreview();
+        });
+    }
+
+    function showProjectSettings() {
+      const modal = document.getElementById('project-settings-modal');
+      modal.style.display = 'flex';
+      const body = document.getElementById('project-settings-body');
+      fetch('/api/projects/' + currentSlug)
+        .then(r => r.json())
+        .then(p => {
+          body.innerHTML = `
+            <div class="editor-form">
+              <div class="form-group">
+                <label>Titre</label>
+                <input id="ps-title" value="${escHtml(p.title)}">
+              </div>
+              <div class="form-group">
+                <label>Sous-titre</label>
+                <input id="ps-subtitle" value="${escHtml(p.subtitle || '')}">
+              </div>
+              <div class="form-group">
+                <label>Tags (séparés par des virgules)</label>
+                <input id="ps-tags" value="${escHtml((p.tags || []).join(', '))}">
+              </div>
+              <div class="form-group">
+                <label>Date</label>
+                <input id="ps-date" type="date" value="${p.date}">
+              </div>
+              <button class="btn btn-primary" onclick="saveProjectSettings()">Enregistrer</button>
+            </div>`;
+        });
+    }
+
+    function saveProjectSettings() {
+      const data = {
+        title: document.getElementById('ps-title').value,
+        subtitle: document.getElementById('ps-subtitle').value,
+        tags: document.getElementById('ps-tags').value.split(',').map((t) => t.trim()).filter(Boolean),
+        date: document.getElementById('ps-date').value,
+      };
+      fetch('/api/projects/' + currentSlug, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+        .then(r => r.json())
+        .then(p => {
+          document.getElementById('project-title').textContent = p.title;
+          closeProjectSettings();
+          refreshPreview();
+        });
+    }
+
+    function closeProjectSettings() {
+      document.getElementById('project-settings-modal').style.display = 'none';
+    }
+
+    function publish() {
+      fetch('/api/git/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'feat: update ' + currentSlug }),
+      }).then(() => refreshPreview());
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('ecofolio-theme', next);
+    }
+
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ─── Drag & Drop ──────────────────────
+
+    let dragSrcId = null;
+
+    document.addEventListener('dragstart', (e) => {
+      const handle = e.target.closest('.drag-handle');
+      if (!handle) return;
+      dragSrcId = handle.dataset.blockId;
+      e.dataTransfer.effectAllowed = 'move';
+      const block = handle.closest('.block');
+      if (block) block.style.opacity = '0.4';
+    });
+
+    document.addEventListener('dragend', (e) => {
+      const block = e.target.closest('.block');
+      if (block) block.style.opacity = '';
+      dragSrcId = null;
+      document.querySelectorAll('.block.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+
+    document.addEventListener('dragover', (e) => {
+      const block = e.target.closest('.block');
+      if (!block || !dragSrcId || block.dataset.blockId === dragSrcId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.block.drag-over').forEach(el => el.classList.remove('drag-over'));
+      block.classList.add('drag-over');
+    });
+
+    document.addEventListener('dragleave', (e) => {
+      const block = e.target.closest('.block');
+      if (block) block.classList.remove('drag-over');
+    });
+
+    document.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const block = e.target.closest('.block');
+      if (!block || !dragSrcId || block.dataset.blockId === dragSrcId) return;
+      block.classList.remove('drag-over');
+
+      const container = document.getElementById('blocks-container');
+      const blocks = [...container.querySelectorAll('.block')];
+      const srcEl = container.querySelector(`[data-block-id="${dragSrcId}"]`);
+      if (!srcEl) return;
+
+      const srcIndex = blocks.indexOf(srcEl);
+      const dstIndex = blocks.indexOf(block);
+      if (srcIndex === dstIndex) return;
+
+      if (srcIndex < dstIndex) {
+        block.insertAdjacentElement('afterend', srcEl);
+      } else {
+        block.insertAdjacentElement('beforebegin', srcEl);
+      }
+
+      const newOrder = [...container.querySelectorAll('.block')].map(el => el.dataset.blockId);
+      fetch(`/api/projects/${currentSlug}/blocks/reorder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blockIds: newOrder }),
+      })
+        .then(r => r.text())
+        .then(html => {
+          container.innerHTML = html;
+          htmx.process(container);
+          refreshPreview();
+        });
+    });
+
+    // ─── HTMX ──────────────────────────────
+
     document.addEventListener('htmx:afterSwap', function(evt) {
-      if (evt.target.id === 'blocks-container') {
-        refreshPreview();
+      if (evt.target && (evt.target.id === 'blocks-container' || evt.target.closest('#blocks-container'))) {
+        loadBlocks();
       }
     });
 
-    if (projectSlug) setupEditor(projectSlug);
+    document.addEventListener('keydown', function(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openPalette(); }
+      if (e.key === 'Escape') { closePalette(); closeInspector(); closeProjectSettings(); }
+    });
+
+    if (currentSlug) loadProject();
   </script>
   <script src="/static/js/editor.js"></script>
 </body>

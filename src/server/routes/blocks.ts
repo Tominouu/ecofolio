@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Block } from '../../core/types/block.js';
 import { generateId } from '../../core/utils/id.js';
+import { isHtmx, renderBlockItems } from '../htmx.js';
 
 export function registerBlockRoutes(app: FastifyInstance) {
   app.get<{ Params: { slug: string } }>('/api/projects/:slug/blocks', async (req, reply) => {
@@ -9,6 +10,12 @@ export function registerBlockRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: true, message: 'Project not found' });
     }
     const project = await app.contentManager.readProject(slug);
+
+    if (isHtmx(req)) {
+      reply.header('Content-Type', 'text/html');
+      return renderBlockItems(project.blocks, slug);
+    }
+
     return project.blocks;
   });
 
@@ -21,8 +28,11 @@ export function registerBlockRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: true, message: 'Project not found' });
       }
       const block: Block = { id: generateId(), type: type as any, data };
-      const project = await app.contentManager.addBlock(slug, block);
-      return reply.status(201).send(project);
+      await app.contentManager.addBlock(slug, block);
+
+      const project = await app.contentManager.readProject(slug);
+      reply.header('Content-Type', 'text/html');
+      return renderBlockItems(project.blocks, slug);
     },
   );
 
@@ -33,8 +43,10 @@ export function registerBlockRoutes(app: FastifyInstance) {
       if (!(await app.contentManager.projectExists(slug))) {
         return reply.status(404).send({ error: true, message: 'Project not found' });
       }
-      const project = await app.contentManager.updateBlock(slug, id, req.body);
-      return project;
+      await app.contentManager.updateBlock(slug, id, req.body);
+      const project = await app.contentManager.readProject(slug);
+      reply.header('Content-Type', 'text/html');
+      return renderBlockItems(project.blocks, slug);
     },
   );
 
@@ -46,7 +58,9 @@ export function registerBlockRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: true, message: 'Project not found' });
       }
       await app.contentManager.deleteBlock(slug, id);
-      return reply.status(204).send();
+      const project = await app.contentManager.readProject(slug);
+      reply.header('Content-Type', 'text/html');
+      return renderBlockItems(project.blocks, slug);
     },
   );
 
@@ -59,7 +73,9 @@ export function registerBlockRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: true, message: 'Project not found' });
       }
       const project = await app.contentManager.reorderBlocks(slug, blockIds);
-      return project;
+      reply.header('Content-Type', 'text/html');
+      const { renderBlockItems } = await import('../htmx.js');
+      return renderBlockItems(project.blocks, slug);
     },
   );
 }
