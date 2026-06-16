@@ -5,30 +5,33 @@
 
 ## Quick Start
 
+**1. Cloner et installer les dépendances**
+
 ```bash
-# Cloner et installer
 git clone https://github.com/Tominouu/ecofolio.git
 cd ecofolio
 npm install
-
-# Créer un portfolio
-npx tsx src/cli/index.ts init ~/mon-portfolio
-
-# Lancer l'éditeur
-cd ~/mon-portfolio
-npx tsx /chemin/vers/ecofolio/src/cli/index.ts dev
-
-# → http://localhost:3000
 ```
 
-Ou avec un alias :
+**2. Créer un alias permanent** (à faire une seule fois)
 
 ```bash
-alias ecofolio='npx tsx /chemin/vers/ecofolio/src/cli/index.ts'
+echo 'alias ecofolio="npx tsx '$PWD'/src/cli/index.ts"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**3. Créer un portfolio**
+
+```bash
 ecofolio init ~/mon-portfolio
 cd ~/mon-portfolio
 ecofolio dev
 ```
+
+Ouvre `http://localhost:3000` — l'éditeur est prêt.
+
+> L'alias permet d'utiliser `ecofolio` depuis n'importe quel dossier.
+> Sans alias : `npx tsx ~/Documents/dev/ecofolio/src/cli/index.ts <commande>`
 
 ## Commandes
 
