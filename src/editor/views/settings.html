@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ecofolio — Paramètres</title>
+  <link rel="stylesheet" href="/static/css/editor.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body class="settings-page">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="/" class="btn btn-ghost btn-sm">← Dashboard</a>
+      <span class="topbar-title">Paramètres</span>
+    </div>
+  </header>
+
+  <main class="settings-main">
+    <form class="settings-form"
+          hx-put="/api/settings"
+          hx-trigger="submit"
+          hx-target="#settings-status"
+          hx-swap="innerHTML">
+
+      <section class="settings-section">
+        <h2>Général</h2>
+        <div class="field" id="field-site-title">
+          <label for="site-title">Titre du site</label>
+          <input type="text" id="site-title" name="site.title" data-bind="site.title">
+        </div>
+        <div class="field">
+          <label for="site-tagline">Tagline</label>
+          <input type="text" id="site-tagline" name="site.tagline" data-bind="site.tagline">
+        </div>
+        <div class="field">
+          <label for="site-email">Email</label>
+          <input type="email" id="site-email" name="site.email" data-bind="site.email">
+        </div>
+        <div class="field">
+          <label for="site-language">Langue</label>
+          <select id="site-language" name="site.language" data-bind="site.language">
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Thème</h2>
+        <div class="field">
+          <label>Thème actuel</label>
+          <div id="theme-selector" hx-get="/api/themes" hx-trigger="load" hx-swap="innerHTML"></div>
+        </div>
+        <div class="field">
+          <label for="theme-color">Couleur primaire</label>
+          <input type="color" id="theme-color" name="theme.tokens.colorPrimary" data-bind="theme.tokens.colorPrimary" value="#6366f1">
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Pages</h2>
+        <div class="field checkbox">
+          <label>
+            <input type="checkbox" name="pages.home" data-bind="pages.home" checked>
+            Page d'accueil
+          </label>
+        </div>
+        <div class="field checkbox">
+          <label>
+            <input type="checkbox" name="pages.about" data-bind="pages.about" checked>
+            Page À propos
+          </label>
+        </div>
+        <div class="field checkbox">
+          <label>
+            <input type="checkbox" name="pages.contact" data-bind="pages.contact">
+            Page Contact
+          </label>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Déploiement</h2>
+        <div class="field">
+          <label for="site-url">URL du site</label>
+          <input type="url" id="site-url" name="site.url" data-bind="site.url" placeholder="https://username.github.io">
+        </div>
+        <button type="button" class="btn btn-primary" id="deploy-btn"
+                hx-post="/api/git/commit"
+                hx-vals='{"message": "deploy: update portfolio"}'>
+          Déployer maintenant
+        </button>
+        <div id="deploy-status" class="deploy-status"></div>
+      </section>
+
+      <div class="settings-actions">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <div id="settings-status"></div>
+      </div>
+    </form>
+  </main>
+
+  <script>
+    function bindSettings() {
+      fetch('/api/settings')
+        .then(r => r.json())
+        .then(config => {
+          document.querySelectorAll('[data-bind]').forEach(el => {
+            const path = el.dataset.bind.split('.');
+            let val = config;
+            for (const key of path) { val = val?.[key]; }
+            if (val !== undefined && val !== null) {
+              if (el.type === 'checkbox') el.checked = val;
+              else el.value = String(val);
+            }
+          });
+        });
+    }
+    bindSettings();
+  </script>
+  <script src="/static/js/editor.js"></script>
+</body>
+</html>

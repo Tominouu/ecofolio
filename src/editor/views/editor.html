@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ecofolio — Éditeur</title>
+  <link rel="stylesheet" href="/static/css/editor.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
+  <script src="/static/js/htmx.min.js"></script>
+  <style>
+    .split-view { display: flex; height: calc(100vh - 48px); }
+    .canvas { flex: 1; overflow-y: auto; padding: 2rem; background: var(--surface-secondary); }
+    .preview { flex: 1; border-left: 1px solid var(--border-primary); }
+    .preview iframe { width: 100%; height: 100%; border: none; background: #fff; }
+    @media (max-width: 768px) { .split-view { flex-direction: column; } .preview { border-left: none; border-top: 1px solid var(--border-primary); height: 50vh; } }
+  </style>
+</head>
+<body class="editor" data-project="">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="/" class="btn btn-ghost btn-sm">← Projets</a>
+      <span class="topbar-title" id="project-title">Projet</span>
+    </div>
+    <div class="topbar-right">
+      <span class="metrics-badge" id="eco-badge">🌱</span>
+      <button class="btn btn-primary btn-sm" id="publish-btn" hx-post="/api/git/commit" hx-trigger="click">Publier</button>
+    </div>
+  </header>
+
+  <div class="split-view">
+    <div class="canvas" id="canvas">
+      <div id="blocks-container"
+           hx-get="/api/projects/{slug}/blocks"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+        <div class="loading">Chargement...</div>
+      </div>
+      <button class="add-block-btn" id="add-block-btn">+ Ajouter un bloc</button>
+    </div>
+    <div class="preview">
+      <iframe id="preview-frame" src="/api/preview" title="Aperçu en direct"></iframe>
+    </div>
+  </div>
+
+  <div id="block-palette" class="block-palette" style="display:none;">
+    <div class="palette-backdrop" onclick="closePalette()"></div>
+    <div class="palette-content">
+      <h3>Ajouter un bloc</h3>
+      <div id="palette-blocks" hx-get="/api/blocks/definitions" hx-trigger="load" hx-swap="innerHTML"></div>
+    </div>
+  </div>
+
+  <script>
+    const projectSlug = document.body.dataset.project || new URLSearchParams(window.location.search).get('slug') || '';
+
+    function setupEditor(slug) {
+      document.body.dataset.project = slug;
+      const blocksContainer = document.getElementById('blocks-container');
+      blocksContainer.setAttribute('hx-get', `/api/projects/${slug}/blocks`);
+      htmx.process(blocksContainer);
+
+      document.getElementById('add-block-btn').onclick = () => openPalette(slug);
+
+      fetch(`/api/projects/${slug}`)
+        .then(r => r.json())
+        .then(p => document.getElementById('project-title').textContent = p.title);
+    }
+
+    function openPalette(slug) {
+      const palette = document.getElementById('block-palette');
+      palette.style.display = 'flex';
+      const blocks = document.getElementById('palette-blocks');
+      blocks.innerHTML = '';
+      fetch('/api/blocks/definitions')
+        .then(r => r.json())
+        .then(defs => {
+          blocks.innerHTML = defs.map(d => `
+            <button class="palette-item"
+                    hx-post="/api/projects/${slug}/blocks"
+                    hx-vals='{"type": "${d.id}"}'
+                    hx-target="#blocks-container"
+                    hx-swap="innerHTML"
+                    hx-on::after-request="closePalette(); refreshPreview();">
+              <span class="palette-icon">${d.icon}</span>
+              <span class="palette-name">${d.name}</span>
+            </button>
+          `).join('');
+          htmx.process(blocks);
+        });
+    }
+
+    function closePalette() {
+      document.getElementById('block-palette').style.display = 'none';
+    }
+
+    function refreshPreview() {
+      const iframe = document.getElementById('preview-frame');
+      fetch('/api/preview/refresh', { method: 'GET' })
+        .then(() => iframe.src = '/api/preview?' + Date.now());
+    }
+
+    document.addEventListener('htmx:afterSwap', function(evt) {
+      if (evt.target.id === 'blocks-container') {
+        refreshPreview();
+      }
+    });
+
+    if (projectSlug) setupEditor(projectSlug);
+  </script>
+  <script src="/static/js/editor.js"></script>
+</body>
+</html>

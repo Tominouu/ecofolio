@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ecofolio — Dashboard</title>
+  <link rel="stylesheet" href="/static/css/editor.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body class="dashboard">
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo">✦ Ecofolio</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/settings" class="btn btn-ghost btn-sm">Paramètres</a>
+    </div>
+  </header>
+
+  <main class="dashboard-main">
+    <div class="dashboard-header">
+      <h1 class="dashboard-title">Mes projets</h1>
+      <button class="btn btn-primary"
+              hx-post="/api/projects"
+              hx-vals='{"title": "Nouveau projet"}'
+              hx-target="#project-grid"
+              hx-swap="beforeend"
+              hx-on::after-request="if(event.detail.successful) window.location.reload()">
+        + Nouveau projet
+      </button>
+    </div>
+
+    <div id="project-grid" class="project-grid"
+         hx-get="/api/projects"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <div class="loading">Chargement...</div>
+    </div>
+  </main>
+
+  <script src="/static/js/editor.js"></script>
+</body>
+</html>
