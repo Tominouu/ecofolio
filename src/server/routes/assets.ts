@@ -1,8 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
 import { extname, resolve } from 'node:path';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 export function registerAssetRoutes(app: FastifyInstance) {
   app.get('/api/assets', async () => {
@@ -122,6 +126,44 @@ export function registerAssetRoutes(app: FastifyInstance) {
     } catch (err) {
       return reply.status(400).send({ error: true, message: 'Failed to fetch image from URL' });
     }
+  });
+
+  app.get('/api/assets/browser', async (req, reply) => {
+    const images = await app.contentManager.listAssets('images');
+    const assetsDir = resolve(app.projectRoot, 'assets', 'images');
+
+    const items = await Promise.all(
+      images.map(async (name) => {
+        const fullPath = resolve(assetsDir, name);
+        let size = 0;
+        try { size = (await stat(fullPath)).size; } catch {}
+        const ext = extname(name).toLowerCase();
+        const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.svg'].includes(ext);
+        return { name, path: `/assets/images/${name}`, size, isImage };
+      })
+    );
+
+    const isHtmx = req.headers['hx-request'] === 'true';
+
+    if (!isHtmx) return items;
+
+    const html = items.filter(i => i.isImage).map(i => `
+      <div class="media-item" onclick="selectMedia('${i.path}', this)" data-path="${i.path}" title="${escapeHtml(i.name)} (${(i.size / 1024).toFixed(1)} KB)">
+        <img src="${i.path}" alt="${escapeHtml(i.name)}" loading="lazy">
+        <div class="media-name">${escapeHtml(i.name)}</div>
+      </div>`).join('\n');
+
+    reply.header('Content-Type', 'text/html');
+    return `
+      <div class="media-browser">
+        <div class="media-browser-header">
+          <span class="media-browser-title">Médiathèque</span>
+          <button class="media-close" onclick="closeMediaBrowser()" type="button">✕</button>
+        </div>
+        <div class="media-grid">
+          ${html || '<div class="media-empty">Aucune image. Importez une image depuis l\'inspecteur.</div>'}
+        </div>
+      </div>`;
   });
 
   app.delete<{ Params: { path: string } }>('/api/assets/*', async (req, reply) => {

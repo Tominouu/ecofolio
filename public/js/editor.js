@@ -117,7 +117,54 @@ document.addEventListener('DOMContentLoaded', () => {
     if (container) observer.observe(container, { childList: true, subtree: true });
   }
 
-  let commitTimer = null;
+  let mediaBrowserBlockId = null;
+
+function openMediaBrowser(blockId) {
+  mediaBrowserBlockId = blockId;
+  const overlay = document.getElementById('media-browser-overlay');
+  const body = document.getElementById('media-browser-body');
+  if (!overlay) {
+    const div = document.createElement('div');
+    div.id = 'media-browser-overlay';
+    div.className = 'palette-overlay';
+    div.style.display = 'flex';
+    div.innerHTML = '<div class="palette-backdrop" onclick="closeMediaBrowser()"></div><div class="palette media-browser-palette"><div id="media-browser-body"></div></div>';
+    document.body.appendChild(div);
+    fetch('/api/assets/browser')
+      .then(r => r.text())
+      .then(html => {
+        document.getElementById('media-browser-body').innerHTML = html;
+      });
+  } else {
+    overlay.style.display = 'flex';
+    fetch('/api/assets/browser')
+      .then(r => r.text())
+      .then(html => {
+        document.getElementById('media-browser-body').innerHTML = html;
+      });
+  }
+}
+
+function closeMediaBrowser() {
+  const overlay = document.getElementById('media-browser-overlay');
+  if (overlay) overlay.style.display = 'none';
+  mediaBrowserBlockId = null;
+}
+
+function selectMedia(path, el) {
+  document.querySelectorAll('.media-item').forEach(i => i.classList.remove('selected'));
+  el.classList.add('selected');
+  if (mediaBrowserBlockId) {
+    const srcInput = document.getElementById(`src-${mediaBrowserBlockId}`);
+    if (srcInput) {
+      srcInput.value = path;
+      srcInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  setTimeout(closeMediaBrowser, 300);
+}
+
+let commitTimer = null;
   document.body.addEventListener('htmx:afterRequest', (e) => {
     clearTimeout(commitTimer);
     commitTimer = setTimeout(() => {

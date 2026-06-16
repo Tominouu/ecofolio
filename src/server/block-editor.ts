@@ -42,6 +42,9 @@ export function getBlockEditorForm(block: Block): string {
         <div class="editor-form">
           <div class="form-group">
             <label>Image</label>
+            <div class="media-preview" id="media-preview-${block.id}">
+              ${(data.src as string) ? `<img src="/${data.src}" alt="">` : ''}
+            </div>
             <div class="upload-zone" id="upload-zone-${block.id}" data-block-id="${block.id}">
               <div class="upload-zone-content">
                 <span class="upload-icon">🖼</span>
@@ -50,6 +53,7 @@ export function getBlockEditorForm(block: Block): string {
               </div>
               <input type="file" accept="image/*" class="upload-input" data-block-id="${block.id}" onchange="uploadFile(this, '${block.id}')">
             </div>
+            <button class="btn btn-sm media-browser-btn" onclick="openMediaBrowser('${block.id}')" type="button">📂 Médiathèque</button>
           </div>
           <div class="form-group">
             <label>Ou URL distante</label>
